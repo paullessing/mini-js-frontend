@@ -1,0 +1,14 @@
+{
+  "name": "mini-js-frontend",
+  "version": "0.0.1",
+  "main": "index.js",
+  "repository": "git@github.com:paullessing/mini-js-frontend",
+  "author": "Paul Lessing <paul@paullessing.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^3.6.4"
+  },
+  "scripts": {
+    "build": "tsc"
+  }
+}
