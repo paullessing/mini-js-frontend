@@ -62,3 +62,6 @@ typings/
 
 # Output Files
 dist/
+
+playground/main.js
+playground/main.tsbuildinfo
