@@ -71,4 +71,8 @@ namespace mj.util {
   export function flatMap<T>(arrays: T[][]): T[] {
     return ([] as T[]).concat.apply([], arrays);
   }
+
+  export function toArray<T>(arrayLike: { [index: number]: T }): T[] {
+    return [].slice.apply(arrayLike);
+  }
 }

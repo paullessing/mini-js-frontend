@@ -20,23 +20,38 @@ namespace mj {
       const declaration = componentRegistry[componentName];
 
       const controller = new declaration.constructorFn();
-      parseTemplate(controller, element, declaration.config.template);
+      const renderer = parseTemplate(element, declaration.config.template);
+
+      // TODO store this somewhere and call again when values change
+      renderer(controller);
     }
 
-    function parseTemplate(controller: any, element: HTMLElement, templateString: string): void {
+    function parseTemplate(element: HTMLElement, templateString: string): (controller: any) => void {
       element.innerHTML = templateString;
 
       // TODO recurse through child nodes and replace components
 
       const childNodes = element.childNodes;
-      childNodes.forEach((childNode) => {
-        if (childNode.nodeType === Node.TEXT_NODE) {
-          const renderContext = createTextNodeRenderContext(childNode as Text);
+
+      const renderNodes = util.toArray(childNodes).map((node, index) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const renderContext = createTextNodeRenderContext(node as Text);
           if (renderContext) {
-            // Attach somehow, rendering whenever it changes
+            return (controller: any) => {
+              // TODO change detection?
+              const newContent = renderContext(controller);
+
+              const currentNode = element.childNodes.item(index);
+              element.replaceChild(newContent, currentNode);
+            }
           }
         }
-      });
+        // TODO handle other node types
+        // TODO handle recursion
+        return null;
+      }).filter(Boolean) as ((controller: any) => void)[];
+
+      return (controller: any) => renderNodes.forEach((renderer) => renderer(controller));
     }
 
     function createTextNodeRenderContext(textNode: Text): ((controller: any) => Text) | null {
@@ -64,7 +79,7 @@ namespace mj {
           values.push(textBefore)
         }
 
-        values.push({ name: m[1] });
+        values.push({ name: m[1].trim() });
 
         start += m.index + m[0].length;
       }

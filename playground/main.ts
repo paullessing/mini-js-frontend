@@ -1,10 +1,13 @@
 /// <reference path="../dist/mini.d.ts" />
 
 @mj.Component({
-  template: 'Hello World2'
+  template: `
+  Hello {{ who }}
+  <button>Click Me</button>
+  `
 })
 class Root {
-
+  public who: string = 'All of you';
 }
 
 mj.init('root');
