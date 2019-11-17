@@ -9,6 +9,10 @@
     "typescript": "^3.6.4"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "playground:build": "tsc -p playground"
+  },
+  "dependencies": {
+    "prescribe": "^1.1.3"
   }
 }
