@@ -1,6 +1,4 @@
-/// <reference path="../lib/_index.ts">
-/// <reference path="./util.ts">
-/// <reference path="./component.ts">
+/// <reference path="./component.ts" />
 
 namespace mj {
   export const init = (id: string) => {

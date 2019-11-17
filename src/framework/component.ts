@@ -1,3 +1,5 @@
+/// <reference path="./util.ts" />
+
 namespace mj {
   type Constructor<T = any> = new () => T;
 
@@ -23,7 +25,11 @@ namespace mj {
     props: string[];
   };
 
+  type StringKey<T> = string & keyof T;
+
   export namespace component {
+    import unique = mj.util.unique;
+
     export interface Config {
       template: string;
     }
@@ -116,13 +122,13 @@ namespace mj {
       };
     }
 
-    function createTextNodeRenderContext(textNode: Text): Renderer | null {
+    function createTextNodeRenderContext<T>(textNode: Text): Renderer<T> | null {
       const text = textNode.data;
       const regex = /\{\{(.*?)\}\}/gm;
       let m;
       let start = 0;
 
-      const values: (string | { name: string })[] = [];
+      const values: (string | { name: StringKey<T> })[] = [];
 
       let hasRenderText = false;
       while ((m = regex.exec(text)) !== null) {
@@ -141,7 +147,7 @@ namespace mj {
           values.push(textBefore)
         }
 
-        values.push({ name: m[1].trim() });
+        values.push({ name: m[1].trim() as StringKey<T> });
 
         start += m.index + m[0].length;
       }
@@ -155,20 +161,34 @@ namespace mj {
         return null; // Only a single text node
       }
 
-      const namedValues = values
-        .map((value) => typeof value === 'string' ? null : value.name)
-        .filter(Boolean)
-        .filter(mj.util.unique) as string[];
-      const ref = document.createComment('Noderef:' + namedValues.join());
-      textNode.parentElement!.insertBefore(ref, textNode);
+      const renderValues: { ref: Comment, prop: StringKey<T> }[] = [];
+      const currentText = [];
+      const parent = textNode.parentNode!;
+      for (const value of values) {
+        if (typeof value === 'string') {
+          currentText.push(value);
+        } else {
+          parent.insertBefore(new Text(currentText.join('')), textNode);
+          currentText.splice(0);
+          const commentNode = document.createComment('Noderef:' + value.name);
+          parent.insertBefore(commentNode, textNode);
+          parent.insertBefore(new Text(''), textNode); // Placeholder; will be replaced on render
+          renderValues.push({ ref: commentNode, prop: value.name });
+        }
+      }
+      if (currentText.length) {
+        parent.insertBefore(new Text(currentText.join('')), textNode);
+      }
 
-      const render: Partial<Renderer> = function(controller: any): void {
-        const text = values.map((value) => typeof value === 'string' ? value : controller[value.name]).join('');
-        const newNode = new Text(text);
+      parent.removeChild(textNode);
 
-        ref.parentNode!.replaceChild(newNode, ref.nextSibling!);
+      const render: Partial<Renderer> = function(controller: T): void {
+        renderValues.forEach(({ ref, prop }) => {
+          const value = '' + controller[prop];
+          ref.parentElement!.replaceChild(new Text(value), ref.nextSibling!);
+        });
       };
-      render.props = namedValues;
+      render.props = renderValues.map(({ prop }) => prop).filter(unique);
       return render as Renderer;
     }
   }
