@@ -75,4 +75,12 @@ namespace mj.util {
   export function toArray<T>(arrayLike: { [index: number]: T }): T[] {
     return [].slice.apply(arrayLike);
   }
+
+  export function array_unique<T>(values: T[]): T[] {
+    return values.filter((value, i, array) => array.indexOf(value) === i);
+  }
+
+  export function unique<T>(value: T, index: number, array: T[]): boolean {
+    return array.indexOf(value) === index;
+  }
 }

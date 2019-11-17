@@ -18,7 +18,10 @@ namespace mj {
     // TODO store bindings for render and children, so that we can run change detection and only rerender on change
   }
 
-  type Renderer<T = any> = (component: T) => void;
+  type Renderer<T = any> = {
+    (component: T): void;
+    props: string[];
+  };
 
   export namespace component {
     export interface Config {
@@ -88,22 +91,32 @@ namespace mj {
               recurseThroughElementAndProcessBindings(node);
             }
           }
-          // TODO handle other node types
-          // TODO handle recursion
         });
       }
 
       recurseThroughElementAndProcessBindings(element);
 
-      const render = textRenderers.length ? (controller: any) => textRenderers.forEach((renderer) => renderer(controller)) : noop;
+      // TODO handle change detection
+
+      if (!textRenderers.length) {
+        return {
+          render: noop,
+          children
+        };
+      }
+
+      const render: Partial<Renderer> = function(controller: any): void {
+        textRenderers.forEach((renderer) => renderer(controller))
+      };
+      render.props = mj.util.flatMap(textRenderers.map(({ props }) => props)).filter(mj.util.unique);
 
       return {
-        render,
+        render: render as Renderer,
         children,
       };
     }
 
-    function createTextNodeRenderContext(textNode: Text): ((controller: any) => void) | null {
+    function createTextNodeRenderContext(textNode: Text): Renderer | null {
       const text = textNode.data;
       const regex = /\{\{(.*?)\}\}/gm;
       let m;
@@ -142,16 +155,21 @@ namespace mj {
         return null; // Only a single text node
       }
 
-      const namedValues = values.filter((value) => value.hasOwnProperty('name')) as { name: string }[];
-      const ref = document.createComment('Noderef:' + namedValues.map(({ name }) => name).join());
+      const namedValues = values
+        .map((value) => typeof value === 'string' ? null : value.name)
+        .filter(Boolean)
+        .filter(mj.util.unique) as string[];
+      const ref = document.createComment('Noderef:' + namedValues.join());
       textNode.parentElement!.insertBefore(ref, textNode);
 
-      return (controller: any): void => {
+      const render: Partial<Renderer> = function(controller: any): void {
         const text = values.map((value) => typeof value === 'string' ? value : controller[value.name]).join('');
         const newNode = new Text(text);
 
         ref.parentNode!.replaceChild(newNode, ref.nextSibling!);
       };
+      render.props = namedValues;
+      return render as Renderer;
     }
   }
 
@@ -170,3 +188,6 @@ function isElementNode(node: Node): node is HTMLElement {
 }
 
 function noop() {}
+namespace noop {
+  export const props: string[] = [];
+}
