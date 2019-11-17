@@ -27,6 +27,11 @@ namespace mj {
 
   type StringKey<T> = string & keyof T;
 
+  type TextRenderProp<T> = {
+    prop: StringKey<T>;
+    ref: Comment;
+  }
+
   export namespace component {
     import unique = mj.util.unique;
 
@@ -77,7 +82,7 @@ namespace mj {
 
       // TODO recurse through child nodes and replace components
 
-      const textRenderers: Renderer[] = [];
+      const textRenderProps: TextRenderProp<any>[] = [];
       const children: ComponentInstance[] = [];
 
       function recurseThroughElementAndProcessBindings(element: HTMLElement): void {
@@ -85,10 +90,8 @@ namespace mj {
 
         util.toArray(childNodes).forEach((node) => {
           if (node.nodeType === Node.TEXT_NODE) {
-            const renderer = createTextNodeRenderContext(node as Text);
-            if (renderer) {
-              textRenderers.push(renderer);
-            }
+            const renderProps = setupTextNodes(node as Text);
+            textRenderProps.push(...renderProps);
           } else if (isElementNode(node)) {
             if (node.dataset.mjCmp) {
               const child = createComponent(node);
@@ -104,7 +107,7 @@ namespace mj {
 
       // TODO handle change detection
 
-      if (!textRenderers.length) {
+      if (!textRenderProps.length) {
         return {
           render: noop,
           children
@@ -112,9 +115,12 @@ namespace mj {
       }
 
       const render: Partial<Renderer> = function(controller: any): void {
-        textRenderers.forEach((renderer) => renderer(controller))
+        textRenderProps.forEach(({ ref, prop }) => {
+          const value = '' + controller[prop];
+          ref.parentElement!.replaceChild(new Text(value), ref.nextSibling!);
+        });
       };
-      render.props = mj.util.flatMap(textRenderers.map(({ props }) => props)).filter(mj.util.unique);
+      render.props = textRenderProps.map(({ prop }) => prop).filter(unique);
 
       return {
         render: render as Renderer,
@@ -122,7 +128,7 @@ namespace mj {
       };
     }
 
-    function createTextNodeRenderContext<T>(textNode: Text): Renderer<T> | null {
+    function setupTextNodes<T>(textNode: Text): TextRenderProp<T>[] {
       const text = textNode.data;
       const regex = /\{\{(.*?)\}\}/gm;
       let m;
@@ -158,10 +164,10 @@ namespace mj {
       }
 
       if (!hasRenderText) {
-        return null; // Only a single text node
+        return []; // Only a single text node
       }
 
-      const renderValues: { ref: Comment, prop: StringKey<T> }[] = [];
+      const renderProps: { ref: Comment, prop: StringKey<T> }[] = [];
       const currentText = [];
       const parent = textNode.parentNode!;
       for (const value of values) {
@@ -173,7 +179,7 @@ namespace mj {
           const commentNode = document.createComment('Noderef:' + value.name);
           parent.insertBefore(commentNode, textNode);
           parent.insertBefore(new Text(''), textNode); // Placeholder; will be replaced on render
-          renderValues.push({ ref: commentNode, prop: value.name });
+          renderProps.push({ ref: commentNode, prop: value.name });
         }
       }
       if (currentText.length) {
@@ -182,14 +188,7 @@ namespace mj {
 
       parent.removeChild(textNode);
 
-      const render: Partial<Renderer> = function(controller: T): void {
-        renderValues.forEach(({ ref, prop }) => {
-          const value = '' + controller[prop];
-          ref.parentElement!.replaceChild(new Text(value), ref.nextSibling!);
-        });
-      };
-      render.props = renderValues.map(({ prop }) => prop).filter(unique);
-      return render as Renderer;
+      return renderProps;
     }
   }
 
