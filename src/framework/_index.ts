@@ -9,6 +9,6 @@ namespace mj {
       throw new Error('Unknown element ID: ' + id);
     }
 
-    component.render(element);
+    component.createComponent(element);
   };
 }

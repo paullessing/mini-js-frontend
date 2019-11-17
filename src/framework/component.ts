@@ -1,60 +1,109 @@
 namespace mj {
+  type Constructor<T = any> = new () => T;
+
   interface ComponentDeclaration {
     name: string;
     config: component.Config;
-    constructorFn: new () => any;
+    constructorFn: Constructor;
   }
   const componentRegistry: { [name: string]: ComponentDeclaration } = {};
+
+  type ComponentInstance<T = any> = {
+    constructorFn: Constructor<T>;
+    controller: T;
+    element: HTMLElement;
+    render: Renderer<T>;
+    parent: ComponentInstance | null;
+    children: ComponentInstance[];
+    // TODO store bindings for render and children, so that we can run change detection and only rerender on change
+  }
+
+  type Renderer<T = any> = (component: T) => void;
 
   export namespace component {
     export interface Config {
       template: string;
     }
 
-    export function render(element: HTMLElement): void {
+    export function createComponent(element: HTMLElement): ComponentInstance {
       const componentName = element.dataset.mjCmp;
       if (!componentName || !componentRegistry[componentName]) {
         throw new Error('Component not found: ' + componentName);
       }
 
-      const declaration = componentRegistry[componentName];
+      const { constructorFn, config } = componentRegistry[componentName];
+      const controller = new constructorFn();
 
-      const controller = new declaration.constructorFn();
-      const renderer = parseTemplate(element, declaration.config.template);
+      const { render, children } = parseTemplate(element, config.template);
+
+      const component: ComponentInstance = {
+        element,
+        constructorFn,
+        controller,
+        render,
+        parent: null,
+        children,
+      };
+
+      // TODO is this necessary?
+      children.forEach((child) => child.parent = component);
 
       // TODO store this somewhere and call again when values change
-      renderer(controller);
+      render(controller);
+
+      return component;
     }
 
-    function parseTemplate(element: HTMLElement, templateString: string): (controller: any) => void {
+    /**
+     * Parses the given HTML template, inserts it into the given HTML element, and returns a render context
+     * @param element
+     * @param templateString
+     * @return {
+     *   render: Callback to render this specific element's content (not recursive)
+     *   children: List of child Component Instances inside this element
+     * }
+     */
+    function parseTemplate(element: HTMLElement, templateString: string): { render: Renderer, children: ComponentInstance[] } {
       element.innerHTML = templateString;
 
       // TODO recurse through child nodes and replace components
 
-      const childNodes = element.childNodes;
+      const textRenderers: Renderer[] = [];
+      const children: ComponentInstance[] = [];
 
-      const renderNodes = util.toArray(childNodes).map((node, index) => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const renderContext = createTextNodeRenderContext(node as Text);
-          if (renderContext) {
-            return (controller: any) => {
-              // TODO change detection?
-              const newContent = renderContext(controller);
+      function recurseThroughElementAndProcessBindings(element: HTMLElement): void {
+        const childNodes = element.childNodes;
 
-              const currentNode = element.childNodes.item(index);
-              element.replaceChild(newContent, currentNode);
+        util.toArray(childNodes).forEach((node) => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const renderer = createTextNodeRenderContext(node as Text);
+            if (renderer) {
+              textRenderers.push(renderer);
+            }
+          } else if (isElementNode(node)) {
+            if (node.dataset.mjCmp) {
+              const child = createComponent(node);
+              children.push(child);
+            } else {
+              recurseThroughElementAndProcessBindings(node);
             }
           }
-        }
-        // TODO handle other node types
-        // TODO handle recursion
-        return null;
-      }).filter(Boolean) as ((controller: any) => void)[];
+          // TODO handle other node types
+          // TODO handle recursion
+        });
+      }
 
-      return (controller: any) => renderNodes.forEach((renderer) => renderer(controller));
+      recurseThroughElementAndProcessBindings(element);
+
+      const render = textRenderers.length ? (controller: any) => textRenderers.forEach((renderer) => renderer(controller)) : noop;
+
+      return {
+        render,
+        children,
+      };
     }
 
-    function createTextNodeRenderContext(textNode: Text): ((controller: any) => Text) | null {
+    function createTextNodeRenderContext(textNode: Text): ((controller: any) => void) | null {
       const text = textNode.data;
       const regex = /\{\{(.*?)\}\}/gm;
       let m;
@@ -93,9 +142,15 @@ namespace mj {
         return null; // Only a single text node
       }
 
-      return (controller: any) => {
+      const namedValues = values.filter((value) => value.hasOwnProperty('name')) as { name: string }[];
+      const ref = document.createComment('Noderef:' + namedValues.map(({ name }) => name).join());
+      textNode.parentElement!.insertBefore(ref, textNode);
+
+      return (controller: any): void => {
         const text = values.map((value) => typeof value === 'string' ? value : controller[value.name]).join('');
-        return new Text(text);
+        const newNode = new Text(text);
+
+        ref.parentNode!.replaceChild(newNode, ref.nextSibling!);
       };
     }
   }
@@ -109,3 +164,9 @@ namespace mj {
     };
   }
 }
+
+function isElementNode(node: Node): node is HTMLElement {
+  return node.nodeType === Node.ELEMENT_NODE;
+}
+
+function noop() {}
