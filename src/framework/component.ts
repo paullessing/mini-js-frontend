@@ -39,6 +39,14 @@ namespace mj {
       template: string;
     }
 
+    export function define(name: string, config: Config, controller: Constructor<any>): void {
+      componentRegistry[name] = {
+        name,
+        config,
+        constructorFn: controller,
+      };
+    }
+
     export function createComponent(element: HTMLElement): ComponentInstance {
       const componentName = element.dataset.mjCmp;
       if (!componentName || !componentRegistry[componentName]) {
@@ -79,8 +87,6 @@ namespace mj {
      */
     function parseTemplate(element: HTMLElement, templateString: string): { render: Renderer, children: ComponentInstance[] } {
       element.innerHTML = templateString;
-
-      // TODO recurse through child nodes and replace components
 
       const textRenderProps: TextRenderProp<any>[] = [];
       const children: ComponentInstance[] = [];
@@ -144,6 +150,7 @@ namespace mj {
         }
         hasRenderText = true;
 
+        // Match properties:
         // m[0] = {{foo}}
         // m[1] = foo
         // m.index = start of this string inside text
@@ -195,9 +202,10 @@ namespace mj {
   export function Component(config: component.Config): ClassDecorator {
     return (target: any): void => {
       const name = target.name;
-      componentRegistry[name] = {
-        name, config, constructorFn: target
-      };
+      component.define(name,
+        config,
+        target,
+      );
     };
   }
 }

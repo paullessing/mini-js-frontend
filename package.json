@@ -10,7 +10,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "playground:build": "tsc -p playground"
+    "playground:build": "tsc -p playground",
+    "start": "yarn build --watch"
   },
   "dependencies": {}
 }
