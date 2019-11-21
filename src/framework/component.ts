@@ -1,6 +1,9 @@
 /// <reference path="./util.ts" />
+/// <reference path="./logger.ts" />
 
 namespace mj {
+  export let log: logger.Logger = logger.consoleLogger;
+
   type Constructor<T = any> = new () => T;
 
   interface ComponentDeclaration {
@@ -10,19 +13,21 @@ namespace mj {
   }
   const componentRegistry: { [name: string]: ComponentDeclaration } = {};
 
+  const instanceRegistry: { element: HTMLElement, component: ComponentInstance }[] = [];
+
   type ComponentInstance<T = any> = {
     constructorFn: Constructor<T>;
     controller: T;
     element: HTMLElement;
     render: Renderer<T>;
+    props: StringKey<T>[];
+    lastRendered: { [prop in keyof T]: any } | undefined;
     parent: ComponentInstance | null;
     children: ComponentInstance[];
-    // TODO store bindings for render and children, so that we can run change detection and only rerender on change
   }
 
   type Renderer<T = any> = {
     (component: T): void;
-    props: string[];
   };
 
   type StringKey<T> = string & keyof T;
@@ -56,24 +61,68 @@ namespace mj {
       const { constructorFn, config } = componentRegistry[componentName];
       const controller = new constructorFn();
 
-      const { render, children } = parseTemplate(element, config.template);
+      const { render, props, children } = parseTemplate(element, config.template);
 
       const component: ComponentInstance = {
         element,
         constructorFn,
         controller,
         render,
+        props,
+        lastRendered: undefined,
         parent: null,
         children,
       };
 
-      // TODO is this necessary?
       children.forEach((child) => child.parent = component);
 
-      // TODO store this somewhere and call again when values change
-      render(controller);
+      instanceRegistry.push({
+        element,
+        component,
+      });
+
+      detectChanges(element);
 
       return component;
+    }
+
+    export function detectChanges(element: HTMLElement): void;
+    export function detectChanges<T = any>(controller: T): void;
+    export function detectChanges<T = any>(elementOrController: HTMLElement | T): void {
+      const instance = instanceRegistry.filter(
+        (instance) => instance.element === elementOrController || instance.component.controller === elementOrController)[0];
+      if (!instance) {
+        log.error('Could not find component', elementOrController);
+        throw new Error('Could not find component');
+      }
+
+      renderIfNecessary(instance.component);
+    }
+
+    function renderIfNecessary(component: ComponentInstance): void {
+      const { lastRendered, controller, props, render } = component;
+
+      let shouldRender = !lastRendered;
+      if (lastRendered) {
+        for (const prop of props) {
+          if (lastRendered[prop] !== controller[prop]) {
+            shouldRender = true;
+            break;
+          }
+        }
+      }
+
+      if (!shouldRender) {
+        log.debug('No changes, not rerendering');
+        return;
+      }
+
+      log.debug('Rerendering');
+      render(component.controller);
+      component.lastRendered = component.lastRendered || {};
+      for (const prop of props) {
+        component.lastRendered[prop] = controller[prop];
+      }
     }
 
     /**
@@ -85,7 +134,7 @@ namespace mj {
      *   children: List of child Component Instances inside this element
      * }
      */
-    function parseTemplate(element: HTMLElement, templateString: string): { render: Renderer, children: ComponentInstance[] } {
+    function parseTemplate<T = any>(element: HTMLElement, templateString: string): { render: Renderer, props: StringKey<T>[], children: ComponentInstance[] } {
       element.innerHTML = templateString;
 
       const textRenderProps: TextRenderProp<any>[] = [];
@@ -111,25 +160,25 @@ namespace mj {
 
       recurseThroughElementAndProcessBindings(element);
 
-      // TODO handle change detection
-
       if (!textRenderProps.length) {
         return {
           render: noop,
+          props: [],
           children
         };
       }
 
-      const render: Partial<Renderer> = function(controller: any): void {
+      const render: Renderer = function(controller: any): void {
         textRenderProps.forEach(({ ref, prop }) => {
           const value = '' + controller[prop];
           ref.parentElement!.replaceChild(new Text(value), ref.nextSibling!);
         });
       };
-      render.props = textRenderProps.map(({ prop }) => prop).filter(unique);
+      const props = textRenderProps.map(({ prop }) => prop).filter(unique) as StringKey<T>[];
 
       return {
-        render: render as Renderer,
+        render,
+        props,
         children,
       };
     }

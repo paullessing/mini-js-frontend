@@ -19,6 +19,13 @@ class Root {
 })
 class Child {
   public what: string = 'child';
+
+  constructor() {
+    setInterval(() => {
+      this.what = new Date().toISOString().substr(0, 18) + '0';
+      mj.component.detectChanges(this);
+    }, 2000);
+  }
 }
 
 mj.component.define('OtherChild', {
@@ -27,4 +34,5 @@ mj.component.define('OtherChild', {
   public foo: string = 'bar';
 });
 
+mj.log.setLogLevel('debug');
 mj.init('root');
