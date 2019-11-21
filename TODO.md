@@ -19,3 +19,4 @@
    * [ ] Auto-detect changes when component values change
  * [ ] Components emit events
  * [ ] Dependency Injection
+ * [ ] If/else logic (necessary? Could just hide)
