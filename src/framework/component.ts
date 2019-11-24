@@ -37,6 +37,11 @@ namespace mj {
     ref: Comment;
   }
 
+  type AttributeRenderProp<T> = {
+    attribute: string;
+    interpolation: (string | { name: StringKey<T> })[];
+  }
+
   export namespace component {
     import unique = mj.util.unique;
 
@@ -137,8 +142,9 @@ namespace mj {
     function parseTemplate<T = any>(element: HTMLElement, templateString: string): { render: Renderer, props: StringKey<T>[], children: ComponentInstance[] } {
       element.innerHTML = templateString;
 
-      const textRenderProps: TextRenderProp<any>[] = [];
+      const textRenderProps: TextRenderProp<T>[] = [];
       const children: ComponentInstance[] = [];
+      const attributeProps: AttributeRenderProp<T>[] = [];
 
       function recurseThroughElementAndProcessBindings(element: HTMLElement): void {
         const childNodes = element.childNodes;
@@ -156,6 +162,17 @@ namespace mj {
             }
           }
         });
+
+        [].forEach.call(element.attributes, (attr: Attr) => {
+          const parsedAttributes = parseStringValue(attr.value);
+          if (parsedAttributes.length === 0 || parsedAttributes.length === 1 && typeof parsedAttributes[0] === 'string') {
+            return;
+          }
+          attributeProps.push({
+            attribute: attr.localName,
+            interpolation: parsedAttributes
+          });
+        });
       }
 
       recurseThroughElementAndProcessBindings(element);
@@ -169,10 +186,19 @@ namespace mj {
       }
 
       const render: Renderer = function(controller: any): void {
+        // TODO skip updating if no values have changed
+
         textRenderProps.forEach(({ ref, prop }) => {
           const value = '' + controller[prop];
           ref.parentElement!.replaceChild(new Text(value), ref.nextSibling!);
         });
+        attributeProps.forEach(({ attribute, interpolation }) => {
+          const text = interpolation.map((value) =>
+            typeof value === 'string' ? value : controller[value.name]
+          ).join('');
+
+          element.setAttribute(attribute, text);
+        })
       };
       const props = textRenderProps.map(({ prop }) => prop).filter(unique) as StringKey<T>[];
 
@@ -185,41 +211,10 @@ namespace mj {
 
     function setupTextNodes<T>(textNode: Text): TextRenderProp<T>[] {
       const text = textNode.data;
-      const regex = /\{\{(.*?)\}\}/gm;
-      let m;
-      let start = 0;
 
-      const values: (string | { name: StringKey<T> })[] = [];
+      const values = parseStringValue<T>(text);
 
-      let hasRenderText = false;
-      while ((m = regex.exec(text)) !== null) {
-        // This is necessary to avoid infinite loops with zero-width matches
-        if (m.index === regex.lastIndex) {
-          regex.lastIndex++;
-        }
-        hasRenderText = true;
-
-        // Match properties:
-        // m[0] = {{foo}}
-        // m[1] = foo
-        // m.index = start of this string inside text
-
-        const textBefore = text.slice(start, m.index);
-        if (textBefore) {
-          values.push(textBefore)
-        }
-
-        values.push({ name: m[1].trim() as StringKey<T> });
-
-        start += m.index + m[0].length;
-      }
-
-      const textAfter = text.slice(start);
-      if (textAfter) {
-        values.push(textAfter);
-      }
-
-      if (!hasRenderText) {
+      if (values.length === 0 || values.length === 1 && typeof values[0] === 'string') {
         return []; // Only a single text node
       }
 
@@ -245,6 +240,42 @@ namespace mj {
       parent.removeChild(textNode);
 
       return renderProps;
+    }
+
+    function parseStringValue<T>(text: string): (string | { name: StringKey<T> })[] {
+      const regex = /\{\{(.*?)\}\}/gm;
+      let m;
+      let start = 0;
+
+      const values: (string | { name: StringKey<T> })[] = [];
+
+      while ((m = regex.exec(text)) !== null) {
+        // This is necessary to avoid infinite loops with zero-width matches
+        if (m.index === regex.lastIndex) {
+          regex.lastIndex++;
+        }
+
+        // Match properties:
+        // m[0] = {{foo}}
+        // m[1] = foo
+        // m.index = start of this string inside text
+
+        const textBefore = text.slice(start, m.index);
+        if (textBefore) {
+          values.push(textBefore)
+        }
+
+        values.push({ name: m[1].trim() as StringKey<T> });
+
+        start += m.index + m[0].length;
+      }
+
+      const textAfter = text.slice(start);
+      if (textAfter) {
+        values.push(textAfter);
+      }
+
+      return values;
     }
   }
 

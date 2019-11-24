@@ -6,7 +6,7 @@
  * [X] Render components via data-mj-cmp
  * [ ] Bindings
    * [X] Bind simple text values via {{ }}
-   * [ ] Bind attribute inputs
+   * [X] Interpolate attributes
    * [ ] Bind events
    * [ ] Interpolation
      * [ ] Concatenating values

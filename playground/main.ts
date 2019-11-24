@@ -14,11 +14,13 @@ class Root {
 
 @mj.Component({
   template: `
-  <div style="color: red">I am a {{ what }} component</div>
+  <div style="color: {{ myColor }}; font-weight: {{ fontWeight }}">I am a {{ what }} component</div>
   `,
 })
 class Child {
   public what: string = 'child';
+  public myColor: string = 'green';
+  public fontWeight: string = 'bold';
 
   constructor() {
     setInterval(() => {
